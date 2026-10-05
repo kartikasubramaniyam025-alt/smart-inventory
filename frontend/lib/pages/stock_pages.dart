@@ -64,7 +64,7 @@ class _StockMovementPageState extends State<StockMovementPage> {
       title: 'Stock In / Out',
       body: ListView(padding: const EdgeInsets.all(16), children: [
         DropdownButtonFormField<int>(
-          value: _productId,
+          initialValue: _productId,
           isExpanded: true,
           decoration: const InputDecoration(labelText: 'Product'),
           items: [for (final p in _products) DropdownMenuItem<int>(value: p['id'], child: Text('${p['name']} (${p['sku']})', overflow: TextOverflow.ellipsis))],

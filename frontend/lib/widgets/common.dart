@@ -117,7 +117,7 @@ class StatCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(children: [
-            CircleAvatar(radius: 22, backgroundColor: color.withOpacity(.12), child: Icon(icon, color: color)),
+            CircleAvatar(radius: 22, backgroundColor: color.withValues(alpha: .12), child: Icon(icon, color: color)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

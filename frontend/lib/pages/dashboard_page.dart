@@ -60,7 +60,7 @@ class MovementTile extends StatelessWidget {
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-            backgroundColor: color.withOpacity(.12),
+            backgroundColor: color.withValues(alpha: .12),
             child: Icon(t == 'IN' ? Icons.south_west_rounded : t == 'OUT' ? Icons.north_east_rounded : Icons.tune_rounded, color: color)),
         title: Text(m['product_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text([date, if ((m['note'] ?? '') != '') m['note'], if (m['user_name'] != null) 'by ${m['user_name']}'].join(' • '),

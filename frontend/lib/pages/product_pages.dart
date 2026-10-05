@@ -24,13 +24,13 @@ class ProductCard extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        leading: CircleAvatar(backgroundColor: AppColors.primary.withOpacity(.1), child: const Icon(Icons.inventory_2_rounded, color: AppColors.primary)),
+        leading: CircleAvatar(backgroundColor: AppColors.primary.withValues(alpha: .1), child: const Icon(Icons.inventory_2_rounded, color: AppColors.primary)),
         title: Text(p['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('${p['sku']} • ${p['category_name'] ?? 'No category'}\n${money(p['price'])} / ${p['unit']}'),
         isThreeLine: true,
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(color: color.withOpacity(.12), borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(20)),
           child: Text('${p['quantity']}', style: TextStyle(color: color, fontWeight: FontWeight.w700)),
         ),
       ),
@@ -50,7 +50,7 @@ class _ProductListPageState extends State<ProductListPage> {
   String? _category;
   int _tick = 0;
   Timer? _debounce;
-  late Future<List> _cats = Api.get('/categories').then((v) => List.from(v));
+  late final Future<List> _cats = Api.get('/categories').then((v) => List.from(v));
 
   @override
   void dispose() {
@@ -335,7 +335,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: DropdownButtonFormField<int>(
-                value: _cat,
+                initialValue: _cat,
                 decoration: const InputDecoration(labelText: 'Category'),
                 items: [for (final c in _cats) DropdownMenuItem<int>(value: c['id'], child: Text(c['name']))],
                 onChanged: (v) => setState(() => _cat = v),
@@ -344,7 +344,7 @@ class _ProductFormPageState extends State<ProductFormPage> {
             Padding(
               padding: const EdgeInsets.only(bottom: 20),
               child: DropdownButtonFormField<int>(
-                value: _sup,
+                initialValue: _sup,
                 decoration: const InputDecoration(labelText: 'Supplier'),
                 items: [for (final s in _sups) DropdownMenuItem<int>(value: s['id'], child: Text(s['name']))],
                 onChanged: (v) => setState(() => _sup = v),

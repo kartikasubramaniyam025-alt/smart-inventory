@@ -32,7 +32,7 @@ class ReportsPage extends StatelessWidget {
                       const SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(value: (r['value'] as num) / maxV, minHeight: 10, backgroundColor: AppColors.primary.withOpacity(.1)),
+                        child: LinearProgressIndicator(value: (r['value'] as num) / maxV, minHeight: 10, backgroundColor: AppColors.primary.withValues(alpha: .1)),
                       ),
                       const SizedBox(height: 6),
                       Text('${r['products']} products • ${r['units']} units', style: const TextStyle(color: AppColors.muted, fontSize: 12)),

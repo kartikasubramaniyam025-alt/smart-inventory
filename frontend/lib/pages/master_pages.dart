@@ -76,7 +76,7 @@ class _MasterPageState extends State<_MasterPage> {
                   final sub = widget.fields.skip(1).map((f) => it[f.key]?.toString() ?? '').where((s) => s.isNotEmpty).join(' • ');
                   return Card(
                     child: ListTile(
-                      leading: CircleAvatar(backgroundColor: AppColors.secondary.withOpacity(.12), child: Icon(widget.icon, color: AppColors.secondary)),
+                      leading: CircleAvatar(backgroundColor: AppColors.secondary.withValues(alpha: .12), child: Icon(widget.icon, color: AppColors.secondary)),
                       title: Text(it['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
                       subtitle: sub.isEmpty ? null : Text(sub),
                       onTap: () => _edit(it),
