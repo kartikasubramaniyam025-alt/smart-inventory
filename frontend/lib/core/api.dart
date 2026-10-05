@@ -51,7 +51,7 @@ class Api {
 
   static Future<dynamic> _send(Future<http.Response> Function() call) async {
     try {
-      return _handle(await call().timeout(const Duration(seconds: 20)));
+      return _handle(await call().timeout(const Duration(seconds: 60)));
     } on ApiException {
       rethrow;
     } catch (_) {
