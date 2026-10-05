@@ -4,14 +4,26 @@ const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const { auth } = require('../middleware/auth');
 
+const MIN_PASSWORD = 8;
+
 const sign = (u) =>
   jwt.sign({ id: u.id, role: u.role, name: u.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
 const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role });
 
-router.post('/register', async (req, res) => {
+// Public sign-up is allowed unless ALLOW_PUBLIC_SIGNUP=false.
+// When it is false, only a logged-in admin can create accounts.
+const registerGuard = (req, res, next) => {
+  if (process.env.ALLOW_PUBLIC_SIGNUP !== 'false') return next();
+  auth(req, res, () => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+    next();
+  });
+};
+
+router.post('/register', registerGuard, async (req, res) => {
   const { name, email, password } = req.body;
-  if (!name || !email || !password || password.length < 6)
-    return res.status(400).json({ error: 'Name, email and password (min 6 chars) are required' });
+  if (!name || !email || !password || password.length < MIN_PASSWORD)
+    return res.status(400).json({ error: `Name, email and password (min ${MIN_PASSWORD} chars) are required` });
   try {
     const hash = await bcrypt.hash(password, 10);
     const count = (await pool.query('SELECT COUNT(*) FROM users')).rows[0].count;
@@ -27,18 +39,26 @@ router.post('/register', async (req, res) => {
 });
 
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [(email || '').toLowerCase()]);
-  const u = rows[0];
-  if (!u || !(await bcrypt.compare(password || '', u.password_hash)))
-    return res.status(401).json({ error: 'Invalid email or password' });
-  res.json({ token: sign(u), user: publicUser(u) });
+  try {
+    const { email, password } = req.body;
+    const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [(email || '').toLowerCase()]);
+    const u = rows[0];
+    if (!u || !(await bcrypt.compare(password || '', u.password_hash)))
+      return res.status(401).json({ error: 'Invalid email or password' });
+    res.json({ token: sign(u), user: publicUser(u) });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 router.get('/me', auth, async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id]);
-  if (!rows[0]) return res.status(404).json({ error: 'User not found' });
-  res.json(publicUser(rows[0]));
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'User not found' });
+    res.json(publicUser(rows[0]));
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // UPDATE profile
@@ -56,13 +76,19 @@ router.put('/me', auth, async (req, res) => {
 
 router.put('/me/password', auth, async (req, res) => {
   const { current_password, new_password } = req.body;
-  if (!new_password || new_password.length < 6)
-    return res.status(400).json({ error: 'New password must be at least 6 characters' });
-  const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id]);
-  if (!(await bcrypt.compare(current_password || '', rows[0].password_hash)))
-    return res.status(401).json({ error: 'Current password is incorrect' });
-  await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [await bcrypt.hash(new_password, 10), req.user.id]);
-  res.json({ message: 'Password updated' });
+  if (!new_password || new_password.length < MIN_PASSWORD)
+    return res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD} characters` });
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+    if (!rows[0]) return res.status(404).json({ error: 'User not found' });
+    if (!(await bcrypt.compare(current_password || '', rows[0].password_hash)))
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2',
+      [await bcrypt.hash(new_password, 10), req.user.id]);
+    res.json({ message: 'Password updated' });
+  } catch (e) {
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 module.exports = router;
