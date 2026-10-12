@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../core/api.dart';
 import '../core/providers.dart';
 import '../core/theme.dart';
 import '../widgets/common.dart';
 
-/// Page 1 - Splash (checks saved login)
+/// Decides where to go when the app opens
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
   @override
@@ -15,82 +16,32 @@ class _SplashPageState extends State<SplashPage> {
   @override
   void initState() {
     super.initState();
-    _start();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _go());
   }
 
-  Future<void> _start() async {
+  Future<void> _go() async {
     final auth = context.read<AuthProvider>();
-    final ok = await auth.restore();
-    await Future.delayed(const Duration(milliseconds: 900));
+    await auth.init();
     if (!mounted) return;
-    Navigator.pushReplacementNamed(context, ok ? '/dashboard' : '/login');
+    final route = auth.isStaff ? '/dashboard' : auth.isCustomer ? '/shop' : '/welcome';
+    Navigator.pushReplacementNamed(context, route);
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                  colors: [AppColors.primary, AppColors.secondary],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight)),
-          child: const Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.inventory_rounded, size: 84, color: Colors.white),
-              SizedBox(height: 16),
-              Text('Smart Inventory',
-                  style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w700)),
-              SizedBox(height: 6),
-              Text('Track. Manage. Grow.', style: TextStyle(color: Colors.white70)),
-              SizedBox(height: 32),
-              CircularProgressIndicator(color: Colors.white),
-            ]),
-          ),
+  Widget build(BuildContext context) => const Scaffold(
+        body: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.inventory_rounded, size: 52, color: AppColors.primary),
+            SizedBox(height: 16),
+            CircularProgressIndicator(),
+            SizedBox(height: 12),
+            Text('Loading...', style: TextStyle(color: AppColors.muted)),
+          ]),
         ),
       );
 }
 
-class _AuthShell extends StatelessWidget {
-  final String title, subtitle;
-  final List<Widget> children;
-  const _AuthShell({required this.title, required this.subtitle, required this.children});
-  @override
-  Widget build(BuildContext context) => Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                  colors: [Color(0xFFE0E7FF), Color(0xFFCFFAFE)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight)),
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(28),
-                    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      const CircleAvatar(
-                          radius: 28,
-                          backgroundColor: AppColors.primary,
-                          child: Icon(Icons.inventory_rounded, color: Colors.white, size: 30)),
-                      const SizedBox(height: 18),
-                      Text(title, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
-                      Text(subtitle, style: const TextStyle(color: AppColors.muted)),
-                      const SizedBox(height: 24),
-                      ...children,
-                    ]),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-}
-
-/// Page 2 - Login
+/// Login for customers or admin/staff (chosen on the welcome page)
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
   @override
@@ -98,59 +49,117 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _email = TextEditingController(text: 'admin@inventory.com');
-  final _pass = TextEditingController(text: 'Admin@123');
-  bool _loading = false, _hide = true;
+  final _f = GlobalKey<FormState>();
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  String _portal = 'customer';
+  bool _init = false, _busy = false, _hide = true;
 
-  Future<void> _submit() async {
-    setState(() => _loading = true);
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_init) return;
+    _init = true;
+    final a = ModalRoute.of(context)?.settings.arguments;
+    if (a is Map && a['portal'] == 'staff') _portal = 'staff';
+  }
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    if (!_f.currentState!.validate()) return;
+    setState(() => _busy = true);
+    final auth = context.read<AuthProvider>();
     try {
-      await context.read<AuthProvider>().login(_email.text.trim(), _pass.text);
-      if (mounted) Navigator.pushReplacementNamed(context, '/dashboard');
+      await auth.login(_email.text.trim(), _password.text);
+      final staffPortal = _portal == 'staff';
+      if (staffPortal && !auth.isStaff) {
+        await auth.logout();
+        throw ApiException('This is a customer account. Please use Customer login.');
+      }
+      if (!staffPortal && auth.isStaff) {
+        await auth.logout();
+        throw ApiException('This is a staff account. Please use Admin / Staff login.');
+      }
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, staffPortal ? '/dashboard' : '/shop', (r) => false);
     } catch (e) {
       if (mounted) showMsg(context, '$e', error: true);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) => _AuthShell(
-        title: 'Welcome back',
-        subtitle: 'Sign in to manage your inventory',
-        children: [
-          TextField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined))),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _pass,
-            obscureText: _hide,
-            onSubmitted: (_) => _submit(),
-            decoration: InputDecoration(
-                labelText: 'Password',
-                prefixIcon: const Icon(Icons.lock_outline),
-                suffixIcon: IconButton(
+  Widget build(BuildContext context) {
+    final staff = _portal == 'staff';
+    return Scaffold(
+      appBar: AppBar(title: Text(staff ? 'Admin / Staff login' : 'Customer login')),
+      body: SafeArea(
+        child: Centered(
+          maxWidth: 440,
+          child: Form(
+            key: _f,
+            child: ListView(padding: const EdgeInsets.all(20), children: [
+              const SizedBox(height: 12),
+              Icon(staff ? Icons.admin_panel_settings_rounded : Icons.shopping_bag_rounded, size: 52, color: AppColors.primary),
+              const SizedBox(height: 10),
+              Text(staff ? 'Sign in to manage the inventory' : 'Sign in to your account',
+                  textAlign: TextAlign.center, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 22),
+              TextFormField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _password,
+                obscureText: _hide,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
                     icon: Icon(_hide ? Icons.visibility_off : Icons.visibility),
-                    onPressed: () => setState(() => _hide = !_hide))),
-          ),
-          const SizedBox(height: 22),
-          ElevatedButton(
-              onPressed: _loading ? null : _submit,
-              child: _loading
-                  ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Sign In')),
-          const SizedBox(height: 8),
-          Center(
-              child: TextButton(
+                    onPressed: () => setState(() => _hide = !_hide),
+                  ),
+                ),
+                validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
+                onFieldSubmitted: (_) => _busy ? null : _login(),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(onPressed: _busy ? null : _login, child: Text(_busy ? 'Signing in...' : 'Sign in')),
+              const SizedBox(height: 8),
+              if (!staff)
+                TextButton(
                   onPressed: () => Navigator.pushNamed(context, '/register'),
-                  child: const Text("Don't have an account? Register"))),
-        ],
-      );
+                  child: const Text('New customer? Create an account'),
+                )
+              else
+                const Padding(
+                  padding: EdgeInsets.only(top: 6),
+                  child: Text('Staff accounts are created by an administrator.',
+                      textAlign: TextAlign.center, style: TextStyle(color: AppColors.muted, fontSize: 12)),
+                ),
+              TextButton(
+                onPressed: () => Navigator.pushNamedAndRemoveUntil(context, '/welcome', (r) => false),
+                child: const Text('Back to start'),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/// Page 3 - Register
+/// Customer sign-up (always creates a customer account)
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
   @override
@@ -158,47 +167,89 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
+  final _f = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _email = TextEditingController();
-  final _pass = TextEditingController();
-  bool _loading = false;
+  final _password = TextEditingController();
+  final _confirm = TextEditingController();
+  bool _busy = false, _hide = true;
 
-  Future<void> _submit() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _password.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _register() async {
+    if (!_f.currentState!.validate()) return;
+    setState(() => _busy = true);
+    final auth = context.read<AuthProvider>();
     try {
-      await context.read<AuthProvider>().register(_name.text.trim(), _email.text.trim(), _pass.text);
-      if (mounted) Navigator.pushNamedAndRemoveUntil(context, '/dashboard', (_) => false);
+      await auth.register(_name.text.trim(), _email.text.trim(), _password.text);
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, auth.isStaff ? '/dashboard' : '/shop', (r) => false);
     } catch (e) {
       if (mounted) showMsg(context, '$e', error: true);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
-  Widget build(BuildContext context) => _AuthShell(
-        title: 'Create account',
-        subtitle: 'Start tracking your stock today',
-        children: [
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Full name', prefixIcon: Icon(Icons.person_outline))),
-          const SizedBox(height: 14),
-          TextField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined))),
-          const SizedBox(height: 14),
-          TextField(
-              controller: _pass,
-              obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password (min 6)', prefixIcon: Icon(Icons.lock_outline))),
-          const SizedBox(height: 22),
-          ElevatedButton(
-              onPressed: _loading ? null : _submit,
-              child: _loading
-                  ? const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Register')),
-          const SizedBox(height: 8),
-          Center(child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Already have an account? Sign in'))),
-        ],
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Create customer account')),
+        body: SafeArea(
+          child: Centered(
+            maxWidth: 440,
+            child: Form(
+              key: _f,
+              child: ListView(padding: const EdgeInsets.all(20), children: [
+                const SizedBox(height: 8),
+                TextFormField(
+                  controller: _name,
+                  decoration: const InputDecoration(labelText: 'Full name', prefixIcon: Icon(Icons.person_outline)),
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter your name' : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email_outlined)),
+                  validator: (v) => (v == null || !v.contains('@')) ? 'Enter a valid email' : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _password,
+                  obscureText: _hide,
+                  decoration: InputDecoration(
+                    labelText: 'Password (min 8 characters)',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(_hide ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () => setState(() => _hide = !_hide),
+                    ),
+                  ),
+                  validator: (v) => (v == null || v.length < 8) ? 'At least 8 characters' : null,
+                ),
+                const SizedBox(height: 14),
+                TextFormField(
+                  controller: _confirm,
+                  obscureText: _hide,
+                  decoration: const InputDecoration(labelText: 'Confirm password', prefixIcon: Icon(Icons.lock_outline)),
+                  validator: (v) => v != _password.text ? 'Passwords do not match' : null,
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(onPressed: _busy ? null : _register, child: Text(_busy ? 'Creating...' : 'Create account')),
+                TextButton(
+                  onPressed: () => Navigator.pushReplacementNamed(context, '/login', arguments: {'portal': 'customer'}),
+                  child: const Text('Already have an account? Sign in'),
+                ),
+              ]),
+            ),
+          ),
+        ),
       );
 }

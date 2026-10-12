@@ -6,41 +6,37 @@ const { auth } = require('../middleware/auth');
 
 const MIN_PASSWORD = 8;
 
+// Allow the new 'customer' role even if the table had a role CHECK rule
+pool
+  .query('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check')
+  .catch((e) => console.error('role constraint:', e.message));
+
 const sign = (u) =>
   jwt.sign({ id: u.id, role: u.role, name: u.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
 const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role });
 
-// Public sign-up is allowed unless ALLOW_PUBLIC_SIGNUP=false.
-// When it is false, only a logged-in admin can create accounts.
-const registerGuard = (req, res, next) => {
-  if (process.env.ALLOW_PUBLIC_SIGNUP !== 'false') return next();
-  auth(req, res, () => {
-    if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
-    next();
-  });
-};
-
-router.post('/register', registerGuard, async (req, res) => {
-  const { name, email, password } = req.body;
+router.post('/register', async (req, res) => {
+  const { name, email, password } = req.body || {};
   if (!name || !email || !password || password.length < MIN_PASSWORD)
     return res.status(400).json({ error: `Name, email and password (min ${MIN_PASSWORD} chars) are required` });
   try {
     const hash = await bcrypt.hash(password, 10);
     const count = (await pool.query('SELECT COUNT(*) FROM users')).rows[0].count;
-    const role = Number(count) === 0 ? 'admin' : 'staff';
+    const role = Number(count) === 0 ? 'admin' : 'customer';
     const { rows } = await pool.query(
       'INSERT INTO users (name,email,password_hash,role) VALUES ($1,$2,$3,$4) RETURNING *',
       [name, email.toLowerCase(), hash, role]);
     res.status(201).json({ token: sign(rows[0]), user: publicUser(rows[0]) });
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'Email already registered' });
+    console.error('register error:', e.message);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
     const { rows } = await pool.query('SELECT * FROM users WHERE email=$1', [(email || '').toLowerCase()]);
     const u = rows[0];
     if (!u || !(await bcrypt.compare(password || '', u.password_hash)))
@@ -61,9 +57,8 @@ router.get('/me', auth, async (req, res) => {
   }
 });
 
-// UPDATE profile
 router.put('/me', auth, async (req, res) => {
-  const { name, email } = req.body;
+  const { name, email } = req.body || {};
   try {
     const { rows } = await pool.query(
       'UPDATE users SET name=COALESCE($1,name), email=COALESCE($2,email) WHERE id=$3 RETURNING *',
@@ -75,7 +70,7 @@ router.put('/me', auth, async (req, res) => {
 });
 
 router.put('/me/password', auth, async (req, res) => {
-  const { current_password, new_password } = req.body;
+  const { current_password, new_password } = req.body || {};
   if (!new_password || new_password.length < MIN_PASSWORD)
     return res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD} characters` });
   try {

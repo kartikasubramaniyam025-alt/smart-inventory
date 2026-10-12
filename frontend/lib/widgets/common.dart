@@ -66,13 +66,19 @@ class AppDrawer extends StatelessWidget {
     ['Stock History', Icons.history_rounded, '/history'],
     ['Low Stock Alerts', Icons.warning_amber_rounded, '/low-stock'],
     ['Reports', Icons.bar_chart_rounded, '/reports'],
+    ['Enquiries', Icons.mail_rounded, '/enquiries'],
+    ['Users', Icons.people_rounded, '/users'],
     ['Profile', Icons.person_rounded, '/profile'],
     ['Settings', Icons.settings_rounded, '/settings'],
   ];
 
+  /// Pages that only an admin can open (the server enforces this too)
+  static const adminOnly = {'/users', '/enquiries'};
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<AuthProvider>().user;
+    final isAdmin = user?['role'] == 'admin';
     final current = ModalRoute.of(context)?.settings.name;
     return Drawer(
       child: Column(children: [
@@ -91,15 +97,16 @@ class AppDrawer extends StatelessWidget {
         Expanded(
           child: ListView(padding: EdgeInsets.zero, children: [
             for (final i in items)
-              ListTile(
-                leading: Icon(i[1] as IconData, color: current == i[2] ? AppColors.primary : AppColors.muted),
-                title: Text(i[0] as String),
-                selected: current == i[2],
-                onTap: () {
-                  Navigator.pop(context);
-                  if (current != i[2]) Navigator.pushReplacementNamed(context, i[2] as String);
-                },
-              ),
+              if (!adminOnly.contains(i[2]) || isAdmin)
+                ListTile(
+                  leading: Icon(i[1] as IconData, color: current == i[2] ? AppColors.primary : AppColors.muted),
+                  title: Text(i[0] as String),
+                  selected: current == i[2],
+                  onTap: () {
+                    Navigator.pop(context);
+                    if (current != i[2]) Navigator.pushReplacementNamed(context, i[2] as String);
+                  },
+                ),
           ]),
         ),
       ]),
